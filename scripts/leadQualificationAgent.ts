@@ -10,7 +10,13 @@ const prisma = new PrismaClient()
 
 async function scrapeWebsite(url: string): Promise<Record<string, any>> {
   try {
-    const res = await fetch(url, { headers: {'User-Agent': 'Mozilla/5.0'}, timeout: 5000 })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+    const res = await fetch(url, { 
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: controller.signal as any
+    })
+    clearTimeout(timeout)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const html = await res.text()
     const $ = cheerio.load(html)
