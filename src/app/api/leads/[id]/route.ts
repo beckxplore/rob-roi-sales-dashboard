@@ -15,7 +15,7 @@ export async function GET(
         triageReview: true,
         offerDraft: true,
         riskAssessment: true,
-        presentation: true,
+        presentations: { take: 1, orderBy: { id: desc }, select: { id: true, status: true, deckUrl: true } },
         negotiations: { orderBy: { createdAt: 'desc' } },
         contract: true,
         handoverBrief: true,
