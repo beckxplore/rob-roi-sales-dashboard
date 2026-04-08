@@ -1,64 +1,257 @@
 "use client"
-import Link from 'next/link'
-import { Users, TrendingUp, CheckCircle2, Target, ArrowRight, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useSession, signOut } from 'next-auth/react'
+import { 
+  Users, TrendingUp, CheckCircle2, Target, AlertTriangle, 
+  Clock, ArrowRight, FileText, MessageSquare, Bell, LogOut,
+  Sparkles, Shield, Briefcase
+} from 'lucide-react'
+
+interface Stats {
+  totalLeads: number
+  pendingApprovals: number
+  inPipeline: number
+  closedWon: number
+  closedWonValue: number
+  closingRate: number
+  stagnant: number
+}
+
+interface PendingApproval {
+  id: string
+  stage: string
+  lead: { companyName: string; demandScore?: number }
+}
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState({ totalLeads: 127, newLeads: 12, pursuingLeads: 23, wonLeads: 8, avgDemandScore: 67, pendingApprovals: 4 })
-  const [agentFeed, setAgentFeed] = useState<any[]>([])
+  const { data: session, status } = useSession()
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
-    setStats({ totalLeads: 127, newLeads: 12, pursuingLeads: 23, wonLeads: 8, avgDemandScore: 67, pendingApprovals: 4 })
-    setAgentFeed([
-      { time: '10:42 AM', agent: 'Qualification Agent', message: 'Scraped acme.com — 75 employees. Recommendation: PURSUE' },
-      { time: '10:40 AM', agent: 'Demand Analyst', message: 'Identified pain points: manual data entry, reporting bottlenecks' },
-      { time: '10:38 AM', agent: 'Triage Board', message: 'Demand score 78/100. Thesis: Strong enterprise fit' },
-    ])
-  }, [])
+    if (status === 'unauthenticated') {
+      window.location.href = '/login'
+      return
+    }
+    if (status === 'authenticated') {
+      fetchData()
+    }
+  }, [status])
+
+  const fetchData = async () => {
+    try {
+      const [leadsRes, approvalsRes] = await Promise.all([
+        fetch('/api/leads?limit=100'),
+        fetch('/api/approvals')
+      ])
+      
+      const leadsData = await leadsRes.json()
+      const approvalsData = await approvalsRes.json()
+      
+      const leads = leadsData.leads || []
+      
+      const inPipeline = leads.filter((l: any) => !['CLOSED_WON', 'CLOSED_LOST'].includes(l.status)).length
+      const closedWon = leads.filter((l: any) => l.status === 'CLOSED_WON').length
+      const closedWonValue = leads.filter((l: any) => l.status === 'CLOSED_WON')
+        .reduce((sum: number, l: any) => sum + (l.offerDraft?.proposedPriceMid || 0), 0)
+      const stagnant = leads.filter((l: any) => {
+        const daysSince = (Date.now() - new Date(l.updatedAt).getTime()) / (1000 * 60 * 60 * 24)
+        return daysSince > 7 && !['CLOSED_WON', 'CLOSED_LOST'].includes(l.status)
+      }).length
+      
+      setStats({
+        totalLeads: leads.length,
+        pendingApprovals: approvalsData.approvals?.length || 0,
+        inPipeline,
+        closedWon,
+        closedWonValue,
+        closingRate: closedWon + leads.filter((l: any) => l.status === 'CLOSED_LOST').length > 0 
+          ? (closedWon / (closedWon + leads.filter((l: any) => l.status === 'CLOSED_LOST').length)) * 100 
+          : 0,
+        stagnant,
+      })
+      
+      setPendingApprovals(approvalsData.approvals?.slice(0, 5) || [])
+    } catch (err) {
+      console.error('Failed to fetch data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (status === 'loading' || loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Clock className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    return null
+  }
+
+  const userRole = (session?.user as any)?.role || 'SALES_TEAM'
+  const userName = session?.user?.name || 'User'
+
+  const roleLabels: Record<string, string> = {
+    EXECUTIVE: 'Executive',
+    SALES_LEAD: 'Sales Lead',
+    SALES_TEAM: 'Sales Team',
+    PROJECT_MANAGER: 'Project Manager',
+  }
+
+  const roleColors: Record<string, string> = {
+    EXECUTIVE: 'text-violet-400 bg-violet-500/20',
+    SALES_LEAD: 'text-blue-400 bg-blue-500/20',
+    SALES_TEAM: 'text-emerald-400 bg-emerald-500/20',
+    PROJECT_MANAGER: 'text-amber-400 bg-amber-500/20',
+  }
+
   return (
     <div className="space-y-8">
-      <div className="flex items-end justify-between">
-        <div><h2 className="text-3xl font-bold">Dashboard</h2><p className="text-muted-foreground mt-1">AI sales force at work.</p></div>
-        <Link href="/triage" className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium">
-          <Target className="w-4 h-4" /> Triage Queue ({stats.pendingApprovals})
-        </Link>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Welcome back, {userName}</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${roleColors[userRole]}`}>
+              {roleLabels[userRole]}
+            </span>
+            <span className="text-muted-foreground text-sm">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/approvals" className="relative p-2 hover:bg-secondary rounded-lg">
+            <Bell className="w-5 h-5" />
+            {stats?.pendingApprovals ? (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
+                {stats.pendingApprovals}
+              </span>
+            ) : null}
+          </Link>
+          <button onClick={() => signOut()} className="p-2 hover:bg-secondary rounded-lg">
+            <LogOut className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+
+      {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[{ icon: <Users className="w-5 h-5 text-blue-400" />, label: 'Total Leads', value: stats.totalLeads }, { icon: <TrendingUp className="w-5 h-5 text-emerald-400" />, label: 'Pursuing', value: stats.pursuingLeads }, { icon: <CheckCircle2 className="w-5 h-5 text-violet-400" />, label: 'Closed Won', value: stats.wonLeads }, { icon: <Target className="w-5 h-5 text-amber-400" />, label: 'Avg Score', value: stats.avgDemandScore }].map((s, i) => (
-          <div key={i} className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-start justify-between">{s.icon}</div>
-            <div className="mt-3"><span className="text-3xl font-bold">{s.value}</span></div>
-            <div className="mt-1 text-xs text-muted-foreground">{s.label}</div>
-          </div>
-        ))}
+        <StatCard icon={<Users className="w-5 h-5 text-blue-400" />} label="Total Leads" value={stats?.totalLeads || 0} />
+        <StatCard icon={<TrendingUp className="w-5 h-5 text-emerald-400" />} label="In Pipeline" value={stats?.inPipeline || 0} />
+        <StatCard icon={<CheckCircle2 className="w-5 h-5 text-violet-400" />} label="Closed Won" value={stats?.closedWon || 0} />
+        <StatCard 
+          icon={<Target className="w-5 h-5 text-amber-400" />} 
+          label="Closing Rate" 
+          value={`${(stats?.closingRate || 0).toFixed(1)}%`} 
+        />
       </div>
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-card border border-border rounded-xl p-5">
-          <h3 className="font-semibold mb-4">Pipeline Overview</h3>
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            {['NEW: 12', 'QUALIFYING: 5', 'TRIAGE: 4', 'OFFER_DRAFT: 3', 'PRESENTATION: 2', 'NEGOTIATING: 2', 'WON: 8', 'LOST: 5'].map(s => <div key={s} className="p-2 bg-secondary/30 rounded">{s}</div>)}
-          </div>
-        </div>
+
+      {/* Pending Approvals (Executive/Sales Lead only) */}
+      {['EXECUTIVE', 'SALES_LEAD'].includes(userRole) && stats?.pendingApprovals ? (
         <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="font-semibold mb-4 flex items-center gap-2"><span className="relative h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span>Agent Activity</h3>
-          <div className="space-y-3 text-sm">
-            {agentFeed.map((f, i) => <div key={i} className="flex gap-3"><span className="text-muted-foreground font-mono text-xs">{f.time}</span><div><div className="font-medium">{f.agent}</div><div className="text-muted-foreground">{f.message}</div></div></div>)}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Shield className="w-5 h-5 text-amber-400" />
+              Pending Approvals
+              {stats.pendingApprovals > 0 && (
+                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full text-xs">
+                  {stats.pendingApprovals}
+                </span>
+              )}
+            </h2>
+            <Link href="/approvals" className="text-sm text-primary hover:underline">View all</Link>
+          </div>
+          {pendingApprovals.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No pending approvals</p>
+          ) : (
+            <div className="space-y-2">
+              {pendingApprovals.map((a) => (
+                <Link key={a.id} href={`/approvals?id=${a.id}`} className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg hover:bg-secondary/50">
+                  <div>
+                    <div className="font-medium">{a.lead.companyName}</div>
+                    <div className="text-xs text-muted-foreground">{a.stage.replace('_', ' ')}</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {/* Project Manager View */}
+      {userRole === 'PROJECT_MANAGER' && (
+        <div className="bg-card border border-cyan-500/30 rounded-xl p-5">
+          <h2 className="font-semibold flex items-center gap-2 mb-4">
+            <Briefcase className="w-5 h-5 text-cyan-400" />
+            Your Projects
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            View leads in PM Handover and Solution Deployment stages.
+          </p>
+          <Link href="/pipeline?role=pm" className="mt-3 inline-flex items-center gap-2 text-sm text-primary hover:underline">
+            View Projects <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <Link href="/pipeline" className="group block p-5 bg-gradient-to-br from-blue-900/20 to-blue-800/10 border border-blue-500/20 rounded-xl hover:border-blue-500/40">
+          <h3 className="font-semibold text-lg">Pipeline</h3>
+          <p className="text-sm text-muted-foreground mt-1">View all leads across stages</p>
+          <div className="mt-3 text-sm text-primary flex items-center">
+            Open Pipeline <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition" />
+          </div>
+        </Link>
+
+        <Link href="/assets" className="group block p-5 bg-gradient-to-br from-violet-900/20 to-violet-800/10 border border-violet-500/20 rounded-xl hover:border-violet-500/40">
+          <h3 className="font-semibold text-lg">Asset Library</h3>
+          <p className="text-sm text-muted-foreground mt-1">Presentations, proposals, contracts</p>
+          <div className="mt-3 text-sm text-primary flex items-center">
+            Browse Assets <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition" />
+          </div>
+        </Link>
+
+        <Link href="/leads/new" className="group block p-5 bg-gradient-to-br from-emerald-900/20 to-emerald-800/10 border border-emerald-500/20 rounded-xl hover:border-emerald-500/40">
+          <h3 className="font-semibold text-lg">Add Lead</h3>
+          <p className="text-sm text-muted-foreground mt-1">Enter a new lead into the system</p>
+          <div className="mt-3 text-sm text-primary flex items-center">
+            New Lead <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition" />
+          </div>
+        </Link>
+      </div>
+
+      {/* Alerts */}
+      {stats?.stagnant ? (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5" />
+          <div>
+            <p className="font-medium text-amber-400">Lead Stagnation Alert</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {stats.stagnant} lead{stats.stagnant > 1 ? 's have' : ' has'} no activity for 7+ days.
+            </p>
           </div>
         </div>
+      ) : null}
+    </div>
+  )
+}
+
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-4">
+      <div className="flex items-start justify-between">{icon}</div>
+      <div className="mt-3">
+        <span className="text-3xl font-bold">{value}</span>
       </div>
-      <div className="grid md:grid-cols-3 gap-4">
-        <Link href="/triage" className="block p-5 bg-gradient-to-br from-blue-900/20 to-blue-800/10 border border-blue-500/20 rounded-xl hover:border-blue-500/40">
-          <h3 className="font-semibold text-lg">Triage Queue</h3><p className="text-sm text-muted-foreground mt-1">Review AI recommendations.</p>
-          <div className="mt-4 text-sm text-primary flex items-center">{stats.pendingApprovals} pending <ArrowRight className="w-4 h-4 ml-1"/></div>
-        </Link>
-        <Link href="/pipeline" className="block p-5 bg-gradient-to-br from-violet-900/20 to-violet-800/10 border border-violet-500/20 rounded-xl hover:border-violet-500/40">
-          <h3 className="font-semibold text-lg">Full Pipeline</h3><p className="text-sm text-muted-foreground mt-1">All 11 stages.</p>
-          <div className="mt-4 text-sm text-primary flex items-center">View <ArrowRight className="w-4 h-4 ml-1"/></div>
-        </Link>
-        <Link href="/handover" className="block p-5 bg-gradient-to-br from-cyan-900/20 to-cyan-800/10 border border-cyan-500/20 rounded-xl hover:border-cyan-500/40">
-          <h3 className="font-semibold text-lg">Handover Briefs</h3><p className="text-sm text-muted-foreground mt-1">Push to delivery.</p>
-          <div className="mt-4 text-sm text-primary flex items-center">1 ready <ArrowRight className="w-4 h-4 ml-1"/></div>
-        </Link>
-      </div>
+      <div className="mt-1 text-xs text-muted-foreground">{label}</div>
     </div>
   )
 }

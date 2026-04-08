@@ -7,37 +7,203 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Lead {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  email       String
-  companyName String
-  contactName String?
-  source      String   @default("web")
-  website     String?
-  linkedinUrl String?
-  phone       String?
-  status      String   @default("NEW")
-  assignedTo  String?
-  priority    String   @default("NORMAL")
-  notes       String?
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String
+  role          String    @default("SALES_TEAM") // EXECUTIVE, SALES_LEAD, SALES_TEAM, PROJECT_MANAGER
+  avatar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  chatHistories    ChatHistory[]
+  approvals        Approval[]
+  activities       ActivityLog[]
+  assignedLeads   Lead[]       @relation("AssignedLeads")
+  notifications   Notification[]
+  
+  @@index([role])
+  @@index([email])
+}
 
-  qualification LeadQualification?
-  demandAnalysis DemandAnalysis?
+model Lead {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Contact
+  email         String
+  companyName   String
+  contactName   String?
+  source        String    @default("web")
+  website       String?
+  phone         String?
+  
+  // Pipeline
+  status        String    @default("QUALIFICATION")
+  stage         String    @default("STEP_1") // STEP_1 through STEP_9
+  priority      String    @default("NORMAL")
+  
+  // Assignment
+  assignedToId  String?
+  assignedTo    User?     @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  
+  // Stage data (JSON blobs for flexibility)
+  qualificationData String?   // Step 1: scrapes, score, recommendation
+  demandData        String?   // Step 2: budget, tools, pain points, cycle
+  triageThesis      String?   // Step 3: AI thesis, demand score
+  strategyData      String?   // Step 4: offer, concept, strategy
+  reviewData1       String?   // Review Board 1 approval
+  reviewData2       String?   // Review Board 2 sign-off
+  
+  // Decision tracking
+  decision         String?   // APPROVED, REJECTED, AMENDED
+  decisionById     String?
+  decisionAt       DateTime?
+  decisionNotes    String?
+  
+  // Final stages
+  presentationUrl   String?   // Step 6
+  negotiationData  String?   // Step 7
+  contractUrl      String?   // Step 8
+  contractStatus   String?   // DRAFT, SENT, SIGNED
+  handoverData     String?   // Step 8.1
+  solutionData     String?   // Step 9
+  
+  // Notes
+  notes          String?
+  
+  // Relations
+  qualification   LeadQualification?
+  demandAnalysis  DemandAnalysis?
   triageReview   TriageReview?
   offerDraft     OfferDraft?
   riskAssessment RiskAssessment?
-  presentation   Presentation?
+  presentations  Presentation[]
+  negotiations   Negotiation[]
   contract       Contract?
   handoverBrief  HandoverBrief?
-  negotiations   Negotiation[]
+  solutionHandover SolutionHandover?
+  chatHistories  ChatHistory[]
+  assets         Asset[]
+  approvals      Approval[]
   activityLogs   ActivityLog[]
-
+  
   @@index([status])
+  @@index([stage])
+  @@index([assignedToId])
+}
+
+model ChatHistory {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  
+  // Context
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Message
+  role        String   // "user", "assistant", "system", "agent"
+  content     String
+  metadata    String?  // JSON: model used, tokens, etc.
+  
+  @@index([leadId])
+  @@index([userId])
   @@index([createdAt])
 }
 
+model Asset {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Content
+  name        String
+  type        String   // PRESENTATION, PROPOSAL, CONTRACT, BRIEF, TEMPLATE, OTHER
+  url         String   // file path or S3 URL
+  mimeType    String?
+  size        Int?     // bytes
+  
+  // Organization
+  tags        String   // JSON array: ["enterprise", "saas", "q4-2024"]
+  category    String?  // OFFER, DECK, CONTRACT, EMAIL, RESEARCH
+  
+  // Access
+  leadId      String?  // Optional: attached to specific lead
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  uploadedById String?
+  
+  // Search
+  description String?
+  embedding   String?  // For vector search (future)
+  
+  @@index([type])
+  @@index([category])
+  @@index([tags])
+}
+
+model Approval {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  
+  // Context
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  // Approval details
+  stage       String   // REVIEW_BOARD_1, OFFER_APPROVAL, REVIEW_BOARD_2
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED, AMENDED
+  
+  // Content snapshot
+  summary     String   // AI-generated summary of what needs approval
+  data        String   // JSON: full data being approved
+  
+  // Decision
+  decidedById String?
+  decidedBy   User?    @relation(fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  notes       String?  // Optional notes from approver
+  
+  @@index([leadId])
+  @@index([stage])
+  @@index([status])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type        String   // LEAD_ASSIGNED, APPROVAL_REQUIRED, DEAL_CLOSED, STAGNATION_ALERT, etc.
+  title       String
+  message     String
+  url         String?  // Deep link
+  read        Boolean  @default(false)
+  telegramSent Boolean @default(false)
+  
+  @@index([userId])
+  @@index([read])
+}
+
+model TelegramSession {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  
+  userId      String   @unique
+  telegramChatId String?
+  telegramUsername String?
+  enabled     Boolean  @default(true)
+  
+  @@index([userId])
+}
+
+// Legacy tables (keeping for compatibility)
 model LeadQualification {
   id              String   @id @default(cuid())
   leadId          String   @unique
@@ -72,8 +238,6 @@ model TriageReview {
   thesis            String
   recommendedAction String
   confidence        String
-  comparedToWon     Int?
-  comparedToLost   Int?
   triagedAt         DateTime @default(now())
 }
 
@@ -104,7 +268,6 @@ model RiskAssessment {
   marginRisk             Boolean  @default(false)
   timelineRisk           Boolean  @default(false)
   scopeRisk              Boolean  @default(false)
-  technicalFitRisk       Boolean  @default(false)
   flags                  String
   riskScore              Int
   recommendedAdjustments String?
@@ -113,7 +276,7 @@ model RiskAssessment {
 
 model Presentation {
   id         String   @id @default(cuid())
-  leadId     String   @unique
+  leadId     String
   lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   deckUrl    String
   emailDraft String
@@ -121,70 +284,80 @@ model Presentation {
   status     String   @default("READY")
   sentAt     DateTime?
   sentBy     String?
-  openedAt   DateTime?
 }
 
 model Negotiation {
-  id                 String    @id @default(cuid())
-  leadId             String
-  lead               Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  threadId           String?
-  clientMessage      String
-  sentiment          String
-  objections         String
+  id                  String   @id @default(cuid())
+  leadId              String
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  clientMessage       String
+  sentiment           String
+  objections          String
   suggestedConcession String?
-  suggestedReply     String
-  priceChange        Int?
-  timelineChange     Int?
-  additionalTerms     String?
-  createdAt          DateTime  @default(now())
-  resolved           Boolean   @default(false)
-  resolvedAt         DateTime?
-
-  @@index([leadId])
+  suggestedReply      String
+  priceChange         Int?
+  timelineChange      Int?
+  createdAt           DateTime @default(now())
+  resolved            Boolean  @default(false)
 }
 
 model Contract {
-  id             String    @id @default(cuid())
-  leadId         String    @unique
-  lead           Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  leadId         String   @unique
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   contractUrl    String
-  status         String    @default("DRAFT")
+  status         String   @default("DRAFT")
   termsSnapshot  String
   sentAt         DateTime?
-  viewedAt       DateTime?
   signedAt       DateTime?
-  reminderSet    Boolean   @default(false)
-  rejectedReason String?
-  notes          String?
+  reminderSet    Boolean  @default(false)
 }
 
 model HandoverBrief {
-  id                   String    @id @default(cuid())
-  leadId               String    @unique
-  lead                 Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  roadmapSlug          String    @unique
+  id                   String   @id @default(cuid())
+  leadId               String   @unique
+  lead                 Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  roadmapSlug          String   @unique
   onboardingChecklist  String
   projectBrief         String
-  artifactsBundlePath   String?
-  deliveryTeamNotified Boolean   @default(false)
-  notifiedAt           DateTime?
-  status               String    @default("READY_FOR_REVIEW")
-  createdBy            String?
-  createdAt            DateTime  @default(now())
-  deliveredAt          DateTime?
+  deliveryTeamNotified Boolean @default(false)
+  status               String   @default("READY_FOR_REVIEW")
+  createdAt            DateTime @default(now())
+  deliveredAt         DateTime?
+}
+
+model SolutionHandover {
+  id              String   @id @default(cuid())
+  leadId          String   @unique
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  // Deployment details
+  deploymentDate  DateTime?
+  modulesDeployed String   // JSON array
+  userCount       Int?
+  automationCount Int?
+  
+  // Status
+  status          String   @default("PENDING") // PENDING, IN_PROGRESS, DEPLOYED, LIVE
+  notes           String?
+  
+  // Relations
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model ActivityLog {
   id          String   @id @default(cuid())
   leadId      String
   lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  agent       String
+  agent       String   // "QualificationAgent", "DemandAgent", "CRITICAL_AGENT", "HUMAN"
   action      String
   description String?
   metadata    String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
-
+  
   @@index([leadId])
   @@index([createdAt])
 }
