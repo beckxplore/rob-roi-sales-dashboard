@@ -125,19 +125,12 @@ export default function DashboardPage() {
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/approvals" className="relative p-2 hover:bg-secondary rounded-lg">
-            <Bell className="w-5 h-5" />
-            {stats?.pendingApprovals ? (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
-                {stats.pendingApprovals}
-              </span>
-            ) : null}
-          </Link>
-          <button onClick={() => signOut()} className="p-2 hover:bg-secondary rounded-lg">
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
+        <Link 
+          href="/leads/new"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-medium"
+        >
+          + Add Lead
+        </Link>
       </div>
 
       {/* Stats Grid */}
@@ -219,11 +212,11 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        <Link href="/leads/new" className="group block p-5 bg-gradient-to-br from-emerald-900/20 to-emerald-800/10 border border-emerald-500/20 rounded-xl hover:border-emerald-500/40">
-          <h3 className="font-semibold text-lg">Add Lead</h3>
-          <p className="text-sm text-muted-foreground mt-1">Enter a new lead into the system</p>
+        <Link href="/chat" className="group block p-5 bg-gradient-to-br from-emerald-900/20 to-emerald-800/10 border border-emerald-500/20 rounded-xl hover:border-emerald-500/40">
+          <h3 className="font-semibold text-lg">AI Chat</h3>
+          <p className="text-sm text-muted-foreground mt-1">Chat with Critical Agent</p>
           <div className="mt-3 text-sm text-primary flex items-center">
-            New Lead <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition" />
+            Start Chat <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition" />
           </div>
         </Link>
       </div>
