@@ -19,7 +19,7 @@ export async function GET(
         negotiations: { orderBy: { createdAt: 'desc' } },
         contract: true,
         handoverBrief: true,
-        activityLog: { orderBy: { createdAt: 'desc' }, take: 50 },
+        activityLogs: { orderBy: { createdAt: 'desc' }, take: 50 },
       },
     })
 
@@ -92,7 +92,7 @@ function cleanLead(lead: any): any {
     presentation: lead.presentation ? { ...lead.presentation, sentAt: lead.presentation.sentAt?.toISOString() || null } : null,
     contract: lead.contract ? { ...lead.contract, sentAt: lead.contract.sentAt?.toISOString() || null, signedAt: lead.contract.signedAt?.toISOString() || null } : null,
     handoverBrief: lead.handoverBrief ? { ...lead.handoverBrief, createdAt: lead.handoverBrief.createdAt.toISOString(), deliveredAt: lead.handoverBrief.deliveredAt?.toISOString() || null } : null,
-    activityLog: lead.activityLog?.map((l: any) => ({
+    activityLogs: lead.activityLog?.map((l: any) => ({
       ...l,
       createdAt: l.createdAt.toISOString(),
     })) || [],
