@@ -320,8 +320,11 @@ model HandoverBrief {
   roadmapSlug          String   @unique
   onboardingChecklist  String
   projectBrief         String
-  deliveryTeamNotified Boolean @default(false)
+  artifactsBundlePath   String?
+  deliveryTeamNotified Boolean  @default(false)
+  notifiedAt           DateTime?
   status               String   @default("READY_FOR_REVIEW")
+  createdBy            String?
   createdAt            DateTime @default(now())
   deliveredAt         DateTime?
 }
