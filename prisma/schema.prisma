@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Lead {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  email         String
+  companyName   String
+  contactName   String?
+  source        String
+  website       String?
+  linkedinUrl   String?
+  phone         String?
+  status        String   @default("NEW")
+  assignedTo    String?
+  priority      String   @default("NORMAL")
+  notes         String?
+  qualificationId   String?
+  qualification     LeadQualification? @relation(fields: [qualificationId], references: [id])
+  analysisId        String?
+  demandAnalysis    DemandAnalysis? @relation(fields: [analysisId], references: [id])
+  triageId          String?
+  triageReview      TriageReview? @relation(fields: [triageId], references: [id])
+  offerId           String?
+  offerDraft        OfferDraft? @relation(fields: [offerId], references: [id])
+  riskId            String?
+  riskAssessment    RiskAssessment? @relation(fields: [riskId], references: [id])
+  presentationId    String?
+  presentation      Presentation? @relation(fields: [presentationId], references: [id])
+  contractId        String?
+  contract          Contract? @relation(fields: [contractId], references: [id])
+  handoverId        String?
+  handoverBrief     HandoverBrief? @relation(fields: [handoverId], references: [id])
+  negotiations      Negotiation[]
+  activityLog       ActivityLog[]
+}
+
+model LeadQualification {
+  id              String   @id @default(cuid())
+  leadId          String   @unique
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  qualityScore    Int
+  confidence      String
+  recommendation  String
+  reasoning       String
+  scrapedData     String
+  checkedAt       DateTime @default(now())
+}
+
+model DemandAnalysis {
+  id                   String   @id @default(cuid())
+  leadId               String   @unique
+  lead                 Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  estimatedBudget      String
+  decisionMakerLevel   String
+  currentTools         String
+  painPoints           String
+  expectedSalesCycle   Int
+  missingDataPoints    String
+  demandScore          Int
+  analyzedAt           DateTime @default(now())
+}
+
+model TriageReview {
+  id              String   @id @default(cuid())
+  leadId          String   @unique
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  demandScore     Int
+  thesis          String
+  recommendedAction String
+  confidence      String
+  comparedToWon   Int?
+  comparedToLost  Int?
+  triagedAt       DateTime @default(now())
+}
+
+model OfferDraft {
+  id                  String   @id @default(cuid())
+  leadId              String   @unique
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  pricingModel        String
+  proposedPriceLow    Int?
+  proposedPriceMid    Int?
+  proposedPriceHigh   Int?
+  discountOffer       String?
+  offerTerms          String
+  valueProposition    String
+  differentiators     String
+  implementationPlan  String?
+  nextSteps           String
+  draftedAt           DateTime @default(now())
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  approved            Boolean  @default(false)
+}
+
+model RiskAssessment {
+  id                  String   @id @default(cuid())
+  leadId              String   @unique
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  marginRisk          Boolean  @default(false)
+  timelineRisk        Boolean  @default(false)
+  scopeRisk           Boolean  @default(false)
+  technicalFitRisk    Boolean  @default(false)
+  flags               String
+  riskScore           Int
+  recommendedAdjustments String?
+  assessedAt          DateTime @default(now())
+}
+
+model Presentation {
+  id              String   @id @default(cuid())
+  leadId          String   @unique
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deckUrl         String
+  emailDraft      String
+  deckSlides      String
+  status          String   @default("READY")
+  sentAt          DateTime?
+  sentBy          String?
+  openedAt        DateTime?
+}
+
+model Negotiation {
+  id              String   @id @default(cuid())
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  threadId        String?
+  clientMessage   String
+  sentiment       String
+  objections      String
+  suggestedConcession String?
+  suggestedReply  String
+  priceChange     Int?
+  timelineChange  Int?
+  additionalTerms String?
+  createdAt       DateTime @default(now())
+  resolved        Boolean  @default(false)
+  resolvedAt      DateTime?
+}
+
+model Contract {
+  id              String   @id @default(cuid())
+  leadId          String   @unique
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contractUrl     String
+  status          String   @default("DRAFT")
+  termsSnapshot   String
+  sentAt          DateTime?
+  viewedAt        DateTime?
+  signedAt        DateTime?
+  reminderSet     Boolean  @default(false)
+  rejectedReason  String?
+  notes           String?
+}
+
+model HandoverBrief {
+  id                  String   @id @default(cuid())
+  leadId              String   @unique
+  lead                Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  roadmapSlug         String   @unique
+  onboardingChecklist String
+  projectBrief        String
+  artifactsBundlePath String?
+  deliveryTeamNotified Boolean @default(false)
+  notifiedAt          DateTime?
+  status              String  @default("READY_FOR_REVIEW")
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  deliveredAt         DateTime?
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  leadId      String
+  agent       String
+  action      String
+  description String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+}
+
+index LeadCreatedIdx   { fields: [createdAt] }
+index LeadStatusIdx    { fields: [status] }
+index LeadSourceIdx    { fields: [source] }
+index LogLeadIdx       { fields: [leadId] }
+index LogCreatedIdx    { fields: [createdAt] }
