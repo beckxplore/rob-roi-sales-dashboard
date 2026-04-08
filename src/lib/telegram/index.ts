@@ -1,34 +1,24 @@
 /**
  * Telegram Bot Integration
- * Handles notifications, alerts, and updates to dedicated channels/users
  */
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID
 
-export type NotificationType = 
-  | 'LEAD_ASSIGNED'
-  | 'APPROVAL_REQUIRED'
-  | 'DEAL_CLOSED_WON'
-  | 'DEAL_CLOSED_LOST'
-  | 'STAGNATION_ALERT'
-  | 'PIPELINE_UPDATE'
-  | 'TEAM_PERFORMANCE'
-  | 'CRITICAL_AGENT_ALERT'
-
-interface TelegramMessage {
+interface TelegramPayload {
   text: string
   parse_mode?: 'HTML' | 'Markdown'
   disable_web_page_preview?: boolean
+  chat_id?: string
 }
 
-async function sendMessage(message: TelegramMessage): Promise<boolean> {
+async function sendMessage(payload: TelegramPayload): Promise<boolean> {
   if (!TELEGRAM_BOT_TOKEN) {
-    console.warn('TELEGRAM_BOT_TOKEN not set - skipping Telegram notification')
+    console.warn('TELEGRAM_BOT_TOKEN not set')
     return false
   }
   
-  const chatId = TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHAT_ID
+  const chatId = payload.chat_id || TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHAT_ID
   
   try {
     const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -36,19 +26,13 @@ async function sendMessage(message: TelegramMessage): Promise<boolean> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        ...message,
+        text: payload.text,
+        parse_mode: payload.parse_mode,
       })
     })
-    
-    if (!response.ok) {
-      const error = await response.text()
-      console.error('Telegram send error:', error)
-      return false
-    }
-    
-    return true
+    return response.ok
   } catch (error) {
-    console.error('Telegram fetch error:', error)
+    console.error('Telegram error:', error)
     return false
   }
 }
@@ -57,11 +41,7 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount)
 }
 
-// Notification templates
 export const notifications = {
-  /**
-   * Alert when a lead needs executive approval
-   */
   async approvalRequired(data: {
     leadName: string
     companyName: string
@@ -71,90 +51,27 @@ export const notifications = {
     requestedBy: string
   }) {
     const scoreEmoji = data.demandScore >= 75 ? '🟢' : data.demandScore >= 50 ? '🟡' : '🔴'
-    
     return sendMessage({
-      text: `📋 <b>Approval Required</b>
-
-<b>${data.companyName}</b>
-Demand Score: ${scoreEmoji} ${data.demandScore}/100
-Est. Value: ${formatCurrency(data.estimatedValue)}
-Requested by: ${data.requestedBy}
-
-<a href="${data.approvalLink}">Review & Approve →</a>`,
+      text: `📋 <b>Approval Required</b>\n\n<b>${data.companyName}</b>\nDemand Score: ${scoreEmoji} ${data.demandScore}/100\nEst. Value: ${formatCurrency(data.estimatedValue)}\nRequested by: ${data.requestedBy}\n\n<a href="${data.approvalLink}">Review & Approve →</a>`,
       parse_mode: 'HTML'
     })
   },
-  
-  /**
-   * Deal won notification
-   */
-  async dealWon(data: {
-    companyName: string
-    finalValue: number
-    salesPerson: string
-    timeToClose: number // days
-    handoverLink: string
-  }) {
+
+  async dealWon(data: { companyName: string; finalValue: number; salesPerson: string; timeToClose: number; handoverLink: string }) {
     return sendMessage({
-      text: `🎉 <b>DEAL CLOSED - WON!</b>
-
-<b>${data.companyName}</b>
-Value: ${formatCurrency(data.finalValue)}
-Salesperson: ${data.salesPerson}
-Time to close: ${data.timeToClose} days
-
-<a href="${data.handoverLink}">Begin Handover →</a>`,
+      text: `🎉 <b>DEAL CLOSED - WON!</b>\n\n<b>${data.companyName}</b>\nValue: ${formatCurrency(data.finalValue)}\nSalesperson: ${data.salesPerson}\nTime to close: ${data.timeToClose} days\n\n<a href="${data.handoverLink}">Begin Handover →</a>`,
       parse_mode: 'HTML'
     })
   },
-  
-  /**
-   * Deal lost notification
-   */
-  async dealLost(data: {
-    companyName: string
-    lostAtStage: string
-    lostReason?: string
-    estimatedLoss: number
-  }) {
-    return sendMessage({
-      text: `❌ <b>DEAL CLOSED - LOST</b>
 
-<b>${data.companyName}</b>
-Lost at: ${data.lostAtStage}
-${data.lostReason ? `Reason: ${data.lostReason}` : ''}
-Est. Value Lost: ${formatCurrency(data.estimatedLoss)}`
-    })
-  },
-  
-  /**
-   * Lead stagnation alert - no activity for X days
-   */
-  async stagnationAlert(data: {
-    companyName: string
-    stage: string
-    daysSinceActivity: number
-    assignedTo: string
-    leadLink: string
-  }) {
+  async stagnationAlert(data: { companyName: string; stage: string; daysSinceActivity: number; assignedTo: string; leadLink: string }) {
     const urgency = data.daysSinceActivity > 14 ? '🚨' : data.daysSinceActivity > 7 ? '⚠️' : '📌'
-    
     return sendMessage({
-      text: `${urgency} <b>Lead Stagnation Alert</b>
-
-<b>${data.companyName}</b>
-Stage: ${data.stage}
-Days inactive: ${data.daysSinceActivity}
-Assigned to: ${data.assignedTo}
-
-<a href="${data.leadLink}">View Lead →</a>`,
+      text: `${urgency} <b>Lead Stagnation Alert</b>\n\n<b>${data.companyName}</b>\nStage: ${data.stage}\nDays inactive: ${data.daysSinceActivity}\nAssigned to: ${data.assignedTo}\n\n<a href="${data.leadLink}">View Lead →</a>`,
       parse_mode: 'HTML'
     })
   },
-  
-  /**
-   * Pipeline daily update
-   */
+
   async pipelineUpdate(data: {
     totalLeads: number
     newLeads: number
@@ -162,61 +79,27 @@ Assigned to: ${data.assignedTo}
     inNegotiation: number
     closedWon: number
     closedWonValue: number
-    closingRate: number // percentage
+    closingRate: number
     topDeals: Array<{ name: string; value: number; stage: string }>
   }) {
-    const topDealsText = data.topDeals.slice(0, 3).map((d, i) => 
-      `${i + 1}. ${d.name} - ${formatCurrency(d.value)} (${d.stage})`
-    ).join('\n')
-    
+    const topDealsText = data.topDeals.slice(0, 3).map((d, i) => `${i + 1}. ${d.name} - ${formatCurrency(d.value)} (${d.stage})`).join('\n')
     return sendMessage({
-      text: `📊 <b>Pipeline Update</b>
-
-Total Leads: ${data.totalLeads}
-New today: ${data.newLeads}
-In Qualification: ${data.inQualification}
-In Negotiation: ${data.inNegotiation}
-
-<b>Closed This Week:</b> ${data.closedWon} deals | ${formatCurrency(data.closedWonValue)}
-Closing Rate: ${data.closingRate.toFixed(1)}%
-
-${topDealsText ? `\n<b>Top Deals:</b>\n${topDealsText}` : ''}`,
+      text: `📊 <b>Pipeline Update</b>\n\nTotal Leads: ${data.totalLeads}\nNew today: ${data.newLeads}\nIn Qualification: ${data.inQualification}\nIn Negotiation: ${data.inNegotiation}\n\n<b>Closed This Week:</b> ${data.closedWon} deals | ${formatCurrency(data.closedWonValue)}\nClosing Rate: ${data.closingRate.toFixed(1)}%\n\n${topDealsText ? `\n<b>Top Deals:</b>\n${topDealsText}` : ''}`,
       parse_mode: 'HTML'
     })
   },
-  
-  /**
-   * Team performance weekly digest
-   */
+
   async teamPerformance(data: {
     period: string
-    metrics: Array<{
-      name: string
-      leadsAssigned: number
-      dealsClosed: number
-      revenue: number
-      avgCycle: number
-    }>
+    metrics: Array<{ name: string; leadsAssigned: number; dealsClosed: number; revenue: number; avgCycle: number }>
     topPerformer: string
   }) {
-    const metricsText = data.metrics.map(m => 
-      `• ${m.name}: ${m.dealsClosed} closed | ${formatCurrency(m.revenue)}`
-    ).join('\n')
-    
+    const metricsText = data.metrics.map(m => `• ${m.name}: ${m.dealsClosed} closed | ${formatCurrency(m.revenue)}`).join('\n')
     return sendMessage({
-      text: `🏆 <b>Team Performance - ${data.period}</b>
-
-${metricsText}
-
-<b>Top Performer:</b> ${data.topPerformer}
-
-View full report in dashboard →`
+      text: `🏆 <b>Team Performance - ${data.period}</b>\n\n${metricsText}\n\n<b>Top Performer:</b> ${data.topPerformer}`,
     })
   },
-  
-  /**
-   * Critical Agent alert - high-risk lead flagged
-   */
+
   async criticalAgentAlert(data: {
     companyName: string
     riskScore: number
@@ -226,58 +109,26 @@ View full report in dashboard →`
   }) {
     const riskEmoji = data.riskScore >= 80 ? '🔴' : data.riskScore >= 60 ? '🟡' : '🟢'
     const factors = data.riskFactors.slice(0, 3).join('\n• ')
-    
     return sendMessage({
-      text: `🚨 <b>Critical Agent Alert</b>
-
-<b>${data.companyName}</b>
-Risk Score: ${riskEmoji} ${data.riskScore}/100
-
-<b>Risk Factors:</b>
-• ${factors}
-
-<b>Recommendation:</b> ${data.recommendation}
-
-<a href="${data.leadLink}">Review →</a>`,
+      text: `🚨 <b>Critical Agent Alert</b>\n\n<b>${data.companyName}</b>\nRisk Score: ${riskEmoji} ${data.riskScore}/100\n\n<b>Risk Factors:</b>\n• ${factors}\n\n<b>Recommendation:</b> ${data.recommendation}\n\n<a href="${data.leadLink}">Review →</a>`,
       parse_mode: 'HTML'
     })
   }
 }
 
-// Webhook handler for Telegram Bot updates
 export async function handleTelegramWebhook(payload: any): Promise<void> {
   const { message } = payload
-  
   if (!message) return
   
   const chatId = message.chat?.id
   const text = message.text || ''
   
-  // Handle commands
   if (text.startsWith('/start')) {
-    await sendMessage({
-      chat_id: chatId,
-      text: 'Welcome to Rob ROI Sales Bot. You will receive notifications about leads, approvals, and pipeline updates.'
-    })
-  }
-  
-  if (text.startsWith('/pipeline')) {
-    // Quick pipeline stats
-    await sendMessage({
-      chat_id: chatId,
-      text: 'Run /dashboard for full pipeline view'
-    })
+    await sendMessage({ chat_id: String(chatId), text: 'Welcome to Rob ROI Sales Bot.' })
   }
   
   if (text.startsWith('/help')) {
-    await sendMessage({
-      chat_id: chatId,
-      text: `Available commands:
-/start - Start bot
-/pipeline - Pipeline summary
-/approvals - Pending approvals
-/help - Show this help`
-    })
+    await sendMessage({ chat_id: String(chatId), text: 'Commands: /start, /pipeline, /help' })
   }
 }
 
