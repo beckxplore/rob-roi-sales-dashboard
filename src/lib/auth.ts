@@ -1,9 +1,23 @@
 /**
- * NextAuth Configuration
+ * NextAuth Configuration - Robust with fallbacks
  */
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import bcrypt from 'bcryptjs'
+
+// Generate a deterministic secret from environment or use fallback
+const getSecret = () => {
+  const envSecret = process.env.NEXTAUTH_SECRET
+  if (envSecret) return envSecret
+  // Fallback for development - NOT secure for production
+  console.warn('NEXTAUTH_SECRET not set, using insecure fallback')
+  return 'development-secret-do-not-use-in-production'
+}
+
+const getUrl = () => {
+  return process.env.NEXTAUTH_URL || 
+    process.env.NEXT_PUBLIC_APP_URL || 
+    'https://rob-roi-sales-dashboard.vercel.app'
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -14,17 +28,19 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null
+        if (!credentials?.email) return null
+        
+        // Demo mode: accept any email/password for testing
+        // In production, validate against your database
+        if (credentials.email && credentials.password) {
+          return {
+            id: credentials.email,
+            email: credentials.email,
+            name: credentials.email.split('@')[0],
+            role: 'SALES_TEAM', // Default role for demo
+          }
         }
-
-        // Note: Prisma client will be imported in the route handler to avoid edge runtime issues
-        return {
-          id: credentials.email,
-          email: credentials.email,
-          name: credentials.email.split('@')[0],
-          role: 'SALES_TEAM',
-        }
+        return null
       }
     })
   ],
@@ -33,14 +49,18 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id
-        token.role = user.role
+        token.email = user.email
+        token.role = user.role || 'SALES_TEAM'
+        token.name = user.name
       }
       return token
     },
     async session({ session, token }: any) {
       if (session.user) {
-        session.user.id = token.id
-        session.user.role = token.role
+        session.user.id = token.id || token.email
+        session.user.email = token.email
+        session.user.role = token.role || 'SALES_TEAM'
+        session.user.name = token.name
       }
       return session
     }
@@ -48,6 +68,7 @@ export const authOptions: NextAuthOptions = {
   
   pages: {
     signIn: '/login',
+    error: '/login',
   },
   
   session: {
@@ -55,7 +76,8 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60,
   },
   
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: getSecret(),
+  useSecureCookies: process.env.NODE_ENV === 'production',
 }
 
 export function canAccess(userRole: string, requiredRole: string): boolean {
